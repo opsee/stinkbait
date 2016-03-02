@@ -1,0 +1,5 @@
+memcached:
+    image: memcached
+    ports:
+        - 11211
+    container_name: stinkbait_memcached
