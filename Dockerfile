@@ -9,6 +9,10 @@ ENV APPENV "testenv"
 RUN apk add --update bash ca-certificates curl && \
 	rm -rf /var/cache/apk/*
 
+RUN mkdir -p /opt/bin && \
+		curl -Lo /opt/bin/s3kms https://s3-us-west-2.amazonaws.com/opsee-releases/go/vinz-clortho/s3kms-linux-amd64 && \
+    chmod 755 /opt/bin/s3kms
+
 COPY run.sh /
 COPY target/linux/amd64/bin/* /
 COPY cert.pem /
