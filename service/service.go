@@ -1,10 +1,13 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gogo/protobuf/jsonpb"
+	"github.com/gogo/protobuf/proto"
 	"github.com/julienschmidt/httprouter"
 	opsee "github.com/opsee/basic/service"
 	"github.com/opsee/basic/tp"
@@ -53,6 +56,9 @@ func New(memcachedList []string) *service {
 		s.bearerDecodeFunc(),
 		s.checkRequestDecodeFunc(),
 	}, s.handleCheck())
+
+	// set a custom encoder for proto objects -> json
+	router.Encoder("application/json", maybeEncodeProto)
 
 	s.router = router
 
@@ -136,4 +142,27 @@ func (s *service) handleToken() tp.HandleFunc {
 
 		return tokenResponse{token}, http.StatusOK, nil
 	}
+}
+
+// encode pb objects with jsonpb, and others with json
+func maybeEncodeProto(msg interface{}) ([]byte, error) {
+	var (
+		buf bytes.Buffer
+		err error
+	)
+
+	if pmsg, ok := msg.(proto.Message); ok {
+		m := jsonpb.Marshaler{}
+		if err = m.Marshal(&buf, pmsg); err != nil {
+			return nil, err
+		}
+
+		return buf.Bytes(), nil
+	}
+
+	if err = json.NewEncoder(&buf).Encode(msg); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
