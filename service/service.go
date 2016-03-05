@@ -9,8 +9,10 @@ import (
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
 	"github.com/julienschmidt/httprouter"
+	"github.com/opsee/basic/schema"
 	opsee "github.com/opsee/basic/service"
 	"github.com/opsee/basic/tp"
+	"github.com/opsee/stinkbait/limiter"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"net/http"
@@ -20,16 +22,20 @@ import (
 const (
 	requestKey = iota
 	tokenKey
+
+	rateL
 )
 
 var (
-	errBadRequest   = errors.New("Bad request.")
-	errUnknown      = errors.New("An unknown error happened.")
-	errUnauthorized = errors.New("Unauthorized request.")
+	errBadRequest    = errors.New("Bad request.")
+	errUnknown       = errors.New("An unknown error happened.")
+	errUnauthorized  = errors.New("Unauthorized request.")
+	errLimitExceeded = errors.New("request limit exceeded.")
 )
 
 type service struct {
 	router         *tp.Router
+	limiter        *limiter.Limiter
 	memcacheClient *memcache.Client
 }
 
@@ -37,8 +43,11 @@ type tokenResponse struct {
 	Token string `json:"token"`
 }
 
-func New(memcachedList []string) *service {
-	s := &service{memcacheClient: memcache.New(memcachedList...)}
+func New(limiter *limiter.Limiter, memcachedList []string) *service {
+	s := &service{
+		limiter:        limiter,
+		memcacheClient: memcache.New(memcachedList...),
+	}
 
 	router := tp.NewHTTPRouter(context.Background())
 
@@ -86,6 +95,11 @@ func (s *service) bearerDecodeFunc() tp.DecodeFunc {
 			return nil, http.StatusUnauthorized, errUnauthorized
 		}
 
+		if waitTime := s.limiter.LimitToken(token); waitTime > 0 {
+			log.Info("rate-limited token: %s - wait %d seconds", token, waitTime)
+			return nil, http.StatusTooManyRequests, errLimitExceeded
+		}
+
 		authed, err := s.authorizeToken(token)
 		if err != nil {
 			log.WithError(err).Error("error fetching auth token")
@@ -108,6 +122,17 @@ func (s *service) checkRequestDecodeFunc() tp.DecodeFunc {
 		if err != nil {
 			log.WithError(err).Error("error decoding TestCheckRequest")
 			return nil, http.StatusBadRequest, errBadRequest
+		}
+
+		err = validateTestCheckRequest(testCheckRequest)
+		if err != nil {
+			log.WithError(err).Errorf("invalid test check request %#v", testCheckRequest)
+			return nil, http.StatusBadRequest, err
+		}
+
+		if waitTime := s.limiter.LimitHost(testCheckRequest.Check.Target.Address); waitTime > 0 {
+			log.Info("rate-limited host: %s - wait %d seconds", testCheckRequest.Check.Target.Address, waitTime)
+			return nil, http.StatusTooManyRequests, errLimitExceeded
 		}
 
 		return context.WithValue(ctx, requestKey, testCheckRequest), 0, nil
@@ -134,6 +159,11 @@ func (s *service) handleCheck() tp.HandleFunc {
 
 func (s *service) handleToken() tp.HandleFunc {
 	return func(ctx context.Context) (interface{}, int, error) {
+		if waitTime := s.limiter.LimitGenerator(); waitTime > 0 {
+			log.Info("rate-limited token generation - wait %d seconds", waitTime)
+			return nil, http.StatusTooManyRequests, errLimitExceeded
+		}
+
 		token, err := s.getToken()
 		if err != nil {
 			log.WithError(err).Error("error executing getToken")
@@ -165,4 +195,52 @@ func maybeEncodeProto(msg interface{}) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+var (
+	errMissingCheck              = errors.New("missing check.")
+	errMissingCheckTarget        = errors.New("missing check target.")
+	errMissingCheckTargetAddress = errors.New("missing check target address.")
+	errMissingCheckSpec          = errors.New("missing http_check.")
+	errMissingCheckSpecPath      = errors.New("missing http_check path.")
+	errMissingCheckSpecPort      = errors.New("missing http_check port.")
+	errMissingCheckSpecProtocol  = errors.New("missing http_check protocol.")
+)
+
+func validateTestCheckRequest(req *opsee.TestCheckRequest) error {
+	if req.Check == nil {
+		return errMissingCheck
+	}
+
+	target := req.Check.Target
+	if target == nil {
+		return errMissingCheckTarget
+	}
+
+	if target.Address == "" {
+		return errMissingCheckTargetAddress
+	}
+
+	spec, ok := req.Check.Spec.(*schema.Check_HttpCheck)
+	if !ok {
+		return errMissingCheckSpec
+	}
+
+	if spec.HttpCheck == nil {
+		return errMissingCheckSpec
+	}
+
+	if spec.HttpCheck.Path == "" {
+		return errMissingCheckSpecPath
+	}
+
+	if spec.HttpCheck.Port == 0 {
+		return errMissingCheckSpecPort
+	}
+
+	if spec.HttpCheck.Protocol == "" {
+		return errMissingCheckSpecProtocol
+	}
+
+	return nil
 }
