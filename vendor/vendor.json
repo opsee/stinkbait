@@ -93,6 +93,16 @@
 			"revisionTime": "2016-01-15T16:23:48-05:00"
 		},
 		{
+			"path": "github.com/hashicorp/golang-lru",
+			"revision": "a0d98a5f288019575c6d1f4bb1573fef2d1fcdc4",
+			"revisionTime": "2016-02-07T13:47:19-08:00"
+		},
+		{
+			"path": "github.com/hashicorp/golang-lru/simplelru",
+			"revision": "a0d98a5f288019575c6d1f4bb1573fef2d1fcdc4",
+			"revisionTime": "2016-02-07T13:47:19-08:00"
+		},
+		{
 			"path": "github.com/hashicorp/hcl",
 			"revision": "1c284ec98f4b398443cbabb0d9197f7f4cc0077c",
 			"revisionTime": "2016-02-10T10:31:11-08:00"
@@ -136,6 +146,11 @@
 			"path": "github.com/hashicorp/hcl/json/token",
 			"revision": "1c284ec98f4b398443cbabb0d9197f7f4cc0077c",
 			"revisionTime": "2016-02-10T10:31:11-08:00"
+		},
+		{
+			"path": "github.com/juju/ratelimit",
+			"revision": "77ed1c8a01217656d2080ad51981f6e99adaa177",
+			"revisionTime": "2015-11-25T20:19:25Z"
 		},
 		{
 			"path": "github.com/julienschmidt/httprouter",

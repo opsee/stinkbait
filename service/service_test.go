@@ -8,6 +8,7 @@ import (
 	"github.com/opsee/basic/schema"
 	opsee "github.com/opsee/basic/service"
 	"github.com/opsee/protobuf/opseeproto/types"
+	"github.com/opsee/stinkbait/limiter"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -48,7 +49,9 @@ func TestTestCheckRequest(t *testing.T) {
 	recorder = server.testCheckRequest(t, "https", "www.reddit.com", "/r/pepe", int32(443), map[string]string{
 		"Authorization": fmt.Sprintf("Bearer %s", tokenresp.Token),
 	})
-	assert.Equal(200, recorder.Code, "requests with a valid token are authorized")
+	if ok := assert.Equal(200, recorder.Code, "requests with a valid token are authorized"); !ok {
+		t.FailNow()
+	}
 
 	testCheckResponse := &opsee.TestCheckResponse{}
 	err = jsonpb.Unmarshal(recorder.Body, testCheckResponse)
@@ -59,15 +62,69 @@ func TestTestCheckRequest(t *testing.T) {
 	assert.True(strings.Contains(testCheckResponse.Responses[0].GetHttpResponse().Body, "reddit"))
 }
 
+func TestRateLimiting(t *testing.T) {
+	var (
+		assert   = assert.New(t)
+		server   = setup()
+		recorder *httptest.ResponseRecorder
+	)
+
+	// limiter is set to limit global token generation to one per minute, with an initial capacity of 10
+	for i := 0; i < 20; i++ {
+		rec := server.testTokenRequest(t)
+		if i < 10 {
+			assert.Equal(200, rec.Code, "token generation is not rate-limited")
+			// save for later use
+			recorder = rec
+		} else {
+			assert.Equal(429, rec.Code, "token generation is rate-limited")
+		}
+	}
+
+	// get a token for testing
+	tokenresp := &tokenResponse{}
+	err := json.NewDecoder(recorder.Body).Decode(tokenresp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// limiter is set to limit individual token generation to one per minute, with an initial capacity of 5
+	for i := 0; i < 20; i++ {
+		rec := server.testCheckRequest(t, "http", "localhost", "/r/pepe", int32(443), map[string]string{
+			"Authorization": fmt.Sprintf("Bearer %s", tokenresp.Token),
+		})
+
+		if i < 5 {
+			assert.NotEqual(429, rec.Code, "token usage is not rate-limited")
+		} else {
+			assert.Equal(429, rec.Code, "token usage is rate-limited")
+		}
+	}
+}
+
 func setup() *service {
 	log.SetLevel(log.FatalLevel)
 	viper.SetEnvPrefix("stinkbait")
 	viper.AutomaticEnv()
 
-	return New(viper.GetStringSlice("memcached_nodes"))
+	limiter, err := limiter.New(limiter.Config{
+		GeneratorBucketCapacity: int64(10),
+		GeneratorBucketInterval: time.Minute,
+		TokenCacheSize:          5,
+		TokenBucketCapacity:     int64(5),
+		TokenBucketInterval:     time.Minute,
+		HostCacheSize:           5,
+		HostBucketCapacity:      int64(5),
+		HostBucketInterval:      time.Second,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return New(limiter, viper.GetStringSlice("memcached_nodes"))
 }
 
-func (s *service) testTokenRequest(t *testing.T) *httptest.ResponseRecorder {
+func (s *service) testTokenRequest(t testing.TB) *httptest.ResponseRecorder {
 	request, err := http.NewRequest("POST", "https://foo/token", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +136,7 @@ func (s *service) testTokenRequest(t *testing.T) *httptest.ResponseRecorder {
 	return w
 }
 
-func (s *service) testCheckRequest(t *testing.T, proto, host, path string, port int32, headers map[string]string) *httptest.ResponseRecorder {
+func (s *service) testCheckRequest(t testing.TB, proto, host, path string, port int32, headers map[string]string) *httptest.ResponseRecorder {
 	ts := &types.Timestamp{}
 	ts.Scan(time.Now())
 
