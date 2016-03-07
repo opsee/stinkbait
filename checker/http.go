@@ -14,7 +14,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const httpWorkerTaskType = "HTTPRequest"
+const (
+	userAgentString = "OpseeBot/0.1-beta (try our monitoring product at https://opsee.com)"
+)
 
 // HTTPRequest and HTTPResponse leave their bodies as strings to make life
 // easier for now. As soon as we move away from JSON, these should be []byte.
@@ -71,6 +73,8 @@ func (r *HTTPRequest) Do() (*schema.HttpResponse, error) {
 			req.Header.Add(key, value)
 		}
 	}
+
+	req.Header.Set("User-Agent", userAgentString)
 
 	t0 := time.Now()
 	resp, err := client.Do(req)
