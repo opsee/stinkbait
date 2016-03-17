@@ -15,6 +15,10 @@ const (
 )
 
 func (s *service) TestCheck(ctx context.Context, req *opsee.TestCheckRequest) (*opsee.TestCheckResponse, error) {
+	if req.Check.Target.Address == "try.opsee.com" {
+		return sampleJSON(req.Check.Target), nil
+	}
+
 	httpReq := checker.NewRequest(req.Check.Target.Address, req.Check.GetHttpCheck())
 	cachedRespItem, err := s.memcacheClient.Get(httpReq.URL)
 	if err != nil {
@@ -79,4 +83,28 @@ func testCheckResponse(target *schema.Target, response *schema.HttpResponse, err
 		},
 		Error: errstr,
 	}
+}
+
+func sampleJSON(target *schema.Target) *opsee.TestCheckResponse {
+	response := &schema.HttpResponse{
+		Code: 200,
+		Body: SampleJSON,
+		Metrics: []*schema.Metric{
+			{
+				Name:  "request_latency_ms",
+				Value: 333,
+			},
+		},
+		Headers: []*schema.Header{
+			{
+				Name:   "Content-Type",
+				Values: []string{"application/json"},
+			},
+			{
+				Name:   "Content-Length",
+				Values: []string{"7417"},
+			},
+		},
+	}
+	return testCheckResponse(target, response, "")
 }
