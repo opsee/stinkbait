@@ -17,7 +17,7 @@ func TestRequestDo(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("X-Pepe", "rare")
 		if r.URL.Path == "/huge" {
-			fmt.Fprintln(w, strings.Repeat("Getout", 4096))
+			fmt.Fprintln(w, strings.Repeat("Getout", 131072))
 		} else {
 			fmt.Fprintln(w, "Getout")
 		}
@@ -37,7 +37,7 @@ func TestRequestDo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(4096, len(resp.Body))
+	assert.Equal(131072, len(resp.Body))
 }
 
 func newTestRequest(t *testing.T, checkUrl string) *HTTPRequest {
