@@ -100,10 +100,10 @@ func (r *HTTPRequest) Do() (*schema.HttpResponse, error) {
 	rdr := bufio.NewReader(resp.Body)
 	var contentLength int64
 
-	if resp.ContentLength >= 0 && resp.ContentLength < 4096 {
+	if resp.ContentLength >= 0 && resp.ContentLength < 131072 {
 		contentLength = resp.ContentLength
 	} else {
-		contentLength = 4096
+		contentLength = 131072
 	}
 
 	body := make([]byte, int64(contentLength))
