@@ -54,7 +54,7 @@ func New(limiter *limiter.Limiter, memcachedList []string) *service {
 	router.Timeout(1 * time.Minute)
 	router.CORS(
 		[]string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"},
-		[]string{`https?://localhost:\d+`, `https?://opsee-ferengi\.s3-website-us-west-2\.amazonaws\.com`, `https://(\w+\.)?(opsy\.co|opsee\.co|opsee\.com)`},
+		[]string{`https?://localhost:\d+`, `https?://opsee-ferengi(-staging\d+)?\.s3-website-us-west-2\.amazonaws\.com`, `https://(\w+\.)?(opsy\.co|opsee\.co|opsee\.com)`},
 	)
 
 	// get a token
